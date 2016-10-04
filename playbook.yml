@@ -2,15 +2,35 @@
 # run this playbook like so: `ansible-playbook playbook.yml --ask-pass`. The ask-pass bit is necessary until you've got your ssh key installed
 - hosts: pis
   remote_user: pi
+  roles:
+    - azavea.spark
   tasks:
     - name: test connection
       ping:
       
-      #see https://github.com/ansible/ansible-modules-core/blob/devel/system/authorized_key.py
+    #see https://github.com/ansible/ansible-modules-core/blob/devel/system/authorized_key.py
     - name: install ssh key
       authorized_key:
             user: pi
             key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
             state: present
             exclusive: true
+    
+    # try to install spark        
+    - name: attempt spark install
+      include: roles/azavea.spark/tasks/main.yml
+      become: true
+      become_method: sudo
+      vars:
+            spark_user: spark
+            spark_user_groups: [pi, sudo]
+            
+    # allow local user to login as the spark user
+    - name: install ssh key
+      authorized_key:
+            user: spark
+            key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
+            state: present
+            exclusive: true
+    
 ...
