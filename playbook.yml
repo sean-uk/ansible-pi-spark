@@ -5,4 +5,12 @@
   tasks:
     - name: test connection
       ping:
+      
+      #see https://github.com/ansible/ansible-modules-core/blob/devel/system/authorized_key.py
+    - name: install ssh key
+      authorized_key:
+            user: pi
+            key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
+            state: present
+            exclusive: true
 ...
