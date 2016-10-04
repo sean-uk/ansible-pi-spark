@@ -1,0 +1,8 @@
+---
+# run this playbook like so: `ansible-playbook playbook.yml --ask-pass`. The ask-pass bit is necessary until you've got your ssh key installed
+- hosts: pis
+  remote_user: pi
+  tasks:
+    - name: test connection
+      ping:
+...
