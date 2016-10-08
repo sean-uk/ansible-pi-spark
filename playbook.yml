@@ -1,6 +1,6 @@
 ---
 # run this playbook like so: `ansible-playbook playbook.yml --ask-pass --ask-become-pass`. The ask-pass bit is necessary until you've got your ssh key installed
-- hosts: pis
+- hosts: cluster-pis
   remote_user: ubuntu
   vars:
         # java_version discovered by running `apt-cache show openjdk-8-jre-headless` on the remote machine
@@ -8,14 +8,13 @@
         java_version: 8u77-b03-3ubuntu3
         ansible_architecture: armhf
         spark_user: spark
-        spark_user_groups: [ubuntu, sudo]
+        spark_user_groups: [ubuntu]
   
   # try to install spark
   roles:
     - 
       role: azavea.spark
       become: true
-      vars: 
       
   tasks:
     - name: test connection
