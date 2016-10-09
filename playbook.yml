@@ -1,5 +1,5 @@
----
 # run this playbook like so: `ansible-playbook playbook.yml --ask-pass --ask-become-pass`. The ask-pass bit is necessary until you've got your ssh key installed
+---
 - hosts: cluster-pis
   remote_user: ubuntu
   vars:
@@ -27,5 +27,38 @@
             key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
             state: present
             exclusive: true
-    
+
+# the master device should have ssh key access to the workers. 
+# (https://spark.apache.org/docs/latest/spark-standalone.html#cluster-launch-scripts)
+# (https://docs.ansible.com/ansible/playbooks_conditionals.html#register-variables)
+- hosts: cluster-pi-master
+  remote_user: ubuntu
+  tasks:
+    - name: check for an ssh key
+      shell: stat -c "%F" ~/.ssh/id_rsa.pub
+      ignore_errors: true
+      register: master_ssh_key_stat
+
+    - name: ensure an ssh id key is created on the master(s)
+      command: ssh-keygen -f ~/.ssh/id_rsa -N ""
+      when: master_ssh_key_stat.stdout == ""
+      
+    - name: get the master's ssh public key
+      command: cat ~/.ssh/id_rsa.pub
+      register: master_ssh_pubkey
+      
+# not install the master's public id as ssh authorised on the workers
+# https://stackoverflow.com/questions/33896847/how-do-i-set-register-a-variable-to-persist-between-plays-in-ansible/33903682#33903682
+# https://docs.ansible.com/ansible/playbooks_variables.html#magic-variables-and-how-to-access-information-about-other-hosts
+- hosts: cluster-pi-workers
+  remote_user: ubuntu
+  tasks:
+    - name: install master ssh public key on workers
+      authorized_key:
+        user: ubuntu
+        key: "{{ hostvars[item]['master_ssh_pubkey'].stdout }}"
+        state: present
+        exclusive: false
+        # exclusive is false because for now all the nodes have the same username
+      with_items: "{{ groups['cluster-pi-master'] }}"
 ...
