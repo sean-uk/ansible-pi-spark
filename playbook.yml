@@ -53,13 +53,13 @@
     - name: get the master's ssh public key
       command: cat ~/.ssh/id_rsa.pub
       register: master_ssh_pubkey
-      
-# not install the master's public id as ssh authorised on the workers
-# https://stackoverflow.com/questions/33896847/how-do-i-set-register-a-variable-to-persist-between-plays-in-ansible/33903682#33903682
-# https://docs.ansible.com/ansible/playbooks_variables.html#magic-variables-and-how-to-access-information-about-other-hosts
+
 - hosts: cluster-pi-workers
   remote_user: ubuntu
   tasks:
+    # now install the master's public id as ssh authorised on the workers
+    # https://stackoverflow.com/questions/33896847/how-do-i-set-register-a-variable-to-persist-between-plays-in-ansible/33903682#33903682
+    # https://docs.ansible.com/ansible/playbooks_variables.html#magic-variables-and-how-to-access-information-about-other-hosts
     - name: install master ssh public key on workers
       authorized_key:
         user: ubuntu
@@ -68,4 +68,19 @@
         exclusive: false
         # exclusive is false because for now all the nodes have the same username
       with_items: "{{ groups['cluster-pi-master'] }}"
+      
+- hosts: cluster-pi-master
+  remote_user: ubuntu
+  vars:
+    spark_conf_dir: /usr/lib/spark/conf/
+  tasks:
+    - name: create the workers file on the master
+      command: "cp -f {{ spark_conf_dir }}slaves.template {{ spark_conf_dir }}slaves"
+      
+    - name: add the workers to the master's list
+      lineinfile:
+        dest: "{{ spark_conf_dir }}slaves"
+        state: present
+        line: "{{ item }}"
+      with_items: "{{ groups['cluster-pi-workers'] }}"
 ...
