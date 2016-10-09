@@ -42,13 +42,12 @@
   remote_user: ubuntu
   tasks:
     - name: check for an ssh key
-      shell: stat -c "%F" ~/.ssh/id_rsa.pub
-      ignore_errors: true
+      stat: path="~/.ssh/id_rsa.pub"
       register: master_ssh_key_stat
 
     - name: ensure an ssh id key is created on the master(s)
       command: ssh-keygen -f ~/.ssh/id_rsa -N ""
-      when: master_ssh_key_stat.stdout == ""
+      when: master_ssh_key_stat.stat.exists == false
       
     - name: get the master's ssh public key
       command: cat ~/.ssh/id_rsa.pub
