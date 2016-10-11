@@ -15,6 +15,21 @@
 - hosts: cluster-pis
   remote_user: ubuntu
   tasks:
+      # dunno why, but the first time you restart, eth0 seems to vanish and be replaced by this mac-address generated version
+    - name: change eth0 to 'biosdevname' device (I)
+      replace:
+        dest: /etc/network/interfaces
+        regexp: "^auto eth0$"
+        replace: "auto enx{{ hostvars[inventory_hostname]['ansible_default_ipv4']['macaddress']|regex_replace(':', '') }}"
+      become: true
+      
+    - name: change eth0 to 'biosdevname' device (II)
+      replace:
+        dest: /etc/network/interfaces
+        regexp: "^iface eth0 inet dhcp$"
+        replace: "iface enx{{ hostvars[inventory_hostname]['ansible_default_ipv4']['macaddress']|regex_replace(':', '') }} inet dhcp"
+      become: true
+  
     - name: empty hostname file
       command: "truncate /etc/hostname --size=0"
       become: true
