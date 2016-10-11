@@ -19,11 +19,15 @@
       command: "truncate /etc/hostname --size=0"
       become: true
     
-    - name: set hostname
+    - name: update hostname file
       replace:
         dest: /etc/hostname
         regexp: "^.*$"
         replace: "ubuntu-standard-{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address']|regex_replace('[^a-zA-Z0-9]', '-') }}"
+      become: true
+      
+    - name: set hostname for session
+      command: "hostname ubuntu-standard-{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address']|regex_replace('[^a-zA-Z0-9]', '-') }}"
       become: true
       
     - name: ensure all nodes are in each other's hosts files
