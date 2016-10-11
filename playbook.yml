@@ -15,6 +15,14 @@
 - hosts: cluster-pis
   remote_user: ubuntu
   tasks:
+      #see https://github.com/ansible/ansible-modules-core/blob/devel/system/authorized_key.py
+    - name: install ssh key
+      authorized_key:
+            user: ubuntu
+            key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
+            state: present
+            exclusive: true
+  
       # dunno why, but the first time you restart, eth0 seems to vanish and be replaced by this mac-address generated version
     - name: change eth0 to 'biosdevname' device (I)
       replace:
@@ -52,14 +60,6 @@
         line: "{{ hostvars[item]['ansible_default_ipv4']['address'] }} ubuntu-standard-{{ hostvars[item]['ansible_default_ipv4']['address']|regex_replace('[^a-zA-Z0-9]', '-') }}"
       with_items: play_hosts
       become: true
-      
-      #see https://github.com/ansible/ansible-modules-core/blob/devel/system/authorized_key.py
-    - name: install ssh key
-      authorized_key:
-            user: ubuntu
-            key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
-            state: present
-            exclusive: true
 
 - hosts: cluster-pis
   remote_user: ubuntu
