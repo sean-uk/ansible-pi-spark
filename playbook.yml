@@ -60,23 +60,7 @@
         line: "{{ hostvars[item]['ansible_default_ipv4']['address'] }} ubuntu-standard-{{ hostvars[item]['ansible_default_ipv4']['address']|regex_replace('[^a-zA-Z0-9]', '-') }}"
       with_items: play_hosts
       become: true
-
-- hosts: cluster-pis
-  remote_user: ubuntu
-  vars:
-        # java_version discovered by running `apt-cache show openjdk-8-jre-headless` on the remote machine
-        java_major_version: 8
-        java_version: 8u91-b14-3ubuntu1~16.04.1
-        ansible_architecture: armhf
-        spark_user: spark
-        spark_user_groups: [ubuntu]
-  
-  # try to install spark
-  roles:
-    - 
-      role: azavea.spark
-      become: true
-
+      
 # the master device should have ssh key access to the workers. 
 # (https://spark.apache.org/docs/latest/spark-standalone.html#cluster-launch-scripts)
 # (https://docs.ansible.com/ansible/playbooks_conditionals.html#register-variables)
@@ -109,19 +93,65 @@
         exclusive: false
         # exclusive is false because for now all the nodes have the same username
       with_items: "{{ groups['cluster-pi-master'] }}"
-      
-- hosts: cluster-pi-master
+
+- hosts: cluster-pis
   remote_user: ubuntu
+  
+  #~ # try to install spark
+  roles:
+    - 
+      role: azavea.spark
+      become: true
+  
   vars:
-    spark_conf_dir: /usr/lib/spark/conf/
+        # java_version discovered by running `apt-cache show openjdk-8-jre-headless` on the remote machine
+        java_major_version: 8
+        java_version: 8u91-b14-3ubuntu1~16.04.1
+        ansible_architecture: armhf
+        spark_user: spark
+        spark_user_groups: [ubuntu]
+        
   tasks:
+    - name: make spark log dir writable by standard user.
+      file: path="{{ spark_log_dir }}" state="directory" owner=ubuntu
+      become: true
+    - name: make spark run dir writable by standard user.
+      file: path="{{ spark_run_dir }}" state="directory" owner=ubuntu
+      become: true
+      
     - name: create the workers file on the master
-      command: "cp -f {{ spark_conf_dir }}slaves.template {{ spark_conf_dir }}slaves"
+      command: "cp -f {{ spark_conf_dir }}/conf/slaves.template {{ spark_conf_dir }}/conf/slaves"
+      when: inventory_hostname in groups['cluster-pi-master']
       
     - name: add the workers to the master's list
       lineinfile:
-        dest: "{{ spark_conf_dir }}slaves"
+        dest: "{{ spark_conf_dir }}/conf/slaves"
         state: present
         line: "{{ item }}"
       with_items: "{{ groups['cluster-pi-workers'] }}"
+      when: inventory_hostname in groups['cluster-pi-master']
+      
+      # (want to add a worker on the master node with different parameters)
+    - name: take localhost out of the workers list
+      lineinfile:
+        dest: "{{ spark_conf_dir }}/conf/slaves"
+        state: absent
+        line: "localhost"
+      when: inventory_hostname in groups['cluster-pi-master']
+      
+    - name: start master node
+      command: "{{ spark_usr_dir }}/sbin/start-master.sh"
+      when: inventory_hostname in groups['cluster-pi-master']
+
+      # starting worker with less resources on the master node.
+      # todo: actually find the spark URL(s) rather than guessing from the hostname
+    - name: start worker on master node
+      command: "{{ spark_usr_dir }}/sbin/start-slave.sh 1 spark://{{hostvars[inventory_hostname]['ansible_default_ipv4']['address']}}:7077 --cores=2"
+      with_items: "{{ groups['cluster-pi-master'] }}"
+      when: inventory_hostname in groups['cluster-pi-master']
+      
+    - name: start workers on worker nodes
+      command: "{{ spark_usr_dir }}/sbin/start-slave.sh 1 spark://{{hostvars[item]['ansible_default_ipv4']['address']}}:7077"
+      with_items: groups['cluster-pi-master']
+      when: inventory_hostname in groups['cluster-pi-workers']
 ...
