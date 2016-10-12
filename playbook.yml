@@ -146,12 +146,13 @@
       # starting worker with less resources on the master node.
       # todo: actually find the spark URL(s) rather than guessing from the hostname
     - name: start worker on master node
-      command: "{{ spark_usr_dir }}/sbin/start-slave.sh 1 spark://{{hostvars[inventory_hostname]['ansible_default_ipv4']['address']}}:7077 --cores=2"
-      with_items: "{{ groups['cluster-pi-master'] }}"
+      command: "{{ spark_usr_dir }}/sbin/start-slave.sh 1 spark://ubuntu-standard-{{ hostvars[item]['ansible_default_ipv4']['address']|regex_replace('[^a-zA-Z0-9]', '-') }}:7077 --cores 2"
+      with_items: groups['cluster-pi-master']
       when: inventory_hostname in groups['cluster-pi-master']
       
+      ## don't think this'll work right if there ever were more than one master!
     - name: start workers on worker nodes
-      command: "{{ spark_usr_dir }}/sbin/start-slave.sh 1 spark://{{hostvars[item]['ansible_default_ipv4']['address']}}:7077"
+      command: "{{ spark_usr_dir }}/sbin/start-slave.sh 1 spark://ubuntu-standard-{{ hostvars[item]['ansible_default_ipv4']['address']|regex_replace('[^a-zA-Z0-9]', '-') }}:7077"
       with_items: groups['cluster-pi-master']
       when: inventory_hostname in groups['cluster-pi-workers']
 ...
