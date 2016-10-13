@@ -16,7 +16,7 @@
   remote_user: ubuntu
   tasks:
       #see https://github.com/ansible/ansible-modules-core/blob/devel/system/authorized_key.py
-    - name: install ssh key
+    - name: install the provisioner's ssh key into the nodes
       authorized_key:
             user: ubuntu
             key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
@@ -61,23 +61,25 @@
       with_items: play_hosts
       become: true
       
-# the master device should have ssh key access to the workers. 
-# (https://spark.apache.org/docs/latest/spark-standalone.html#cluster-launch-scripts)
-# (https://docs.ansible.com/ansible/playbooks_conditionals.html#register-variables)
-- hosts: cluster-pi-master
-  remote_user: ubuntu
-  tasks:
     - name: check for an ssh key
       stat: path="~/.ssh/id_rsa.pub"
-      register: master_ssh_key_stat
+      register: ssh_id_check
 
-    - name: ensure an ssh id key is created on the master(s)
+    - name: ensure an ssh id key exists
       command: ssh-keygen -f ~/.ssh/id_rsa -N ""
-      when: master_ssh_key_stat.stat.exists == false
+      when: ssh_id_check.stat.exists == false
       
-    - name: get the master's ssh public key
+    - name: learn the node's ssh id
       command: cat ~/.ssh/id_rsa.pub
-      register: master_ssh_pubkey
+      register: ssh_id
+      
+      # spark's ./sbin/stop-all.sh depends on ssh access.
+    - name: allow nodes to ssh into themselves by key
+      authorized_key:
+        user: ubuntu
+        key: "{{ ssh_id.stdout }}"
+        state: present
+        exclusive: false
 
 - hosts: cluster-pi-workers
   remote_user: ubuntu
@@ -88,11 +90,11 @@
     - name: install master ssh public key on workers
       authorized_key:
         user: ubuntu
-        key: "{{ hostvars[item]['master_ssh_pubkey'].stdout }}"
+        key: "{{ hostvars[item]['ssh_id'].stdout }}"
         state: present
         exclusive: false
         # exclusive is false because for now all the nodes have the same username
-      with_items: "{{ groups['cluster-pi-master'] }}"
+      with_items: groups['cluster-pi-master']
 
 - hosts: cluster-pis
   remote_user: ubuntu
@@ -139,6 +141,9 @@
         line: "localhost"
       when: inventory_hostname in groups['cluster-pi-master']
       
+    - name: stop any currently running spark processes
+      command: "{{ spark_usr_dir }}/sbin/stop-all.sh"
+      
     - name: start master node
       command: "{{ spark_usr_dir }}/sbin/start-master.sh"
       when: inventory_hostname in groups['cluster-pi-master']
@@ -150,9 +155,34 @@
       with_items: groups['cluster-pi-master']
       when: inventory_hostname in groups['cluster-pi-master']
       
-      ## don't think this'll work right if there ever were more than one master!
+      ## todo: don't think this'll work right if there ever were more than one master!
     - name: start workers on worker nodes
       command: "{{ spark_usr_dir }}/sbin/start-slave.sh 1 spark://ubuntu-standard-{{ hostvars[item]['ansible_default_ipv4']['address']|regex_replace('[^a-zA-Z0-9]', '-') }}:7077"
+      with_items: groups['cluster-pi-master']
+      when: inventory_hostname in groups['cluster-pi-workers']
+        
+    - name: tell the master node's master job to start at reboot
+      cron:
+        user: ubuntu
+        name: start-spark-master
+        job: "{{ spark_usr_dir }}/sbin/start-master.sh"
+        special_time: reboot
+      when: inventory_hostname in groups['cluster-pi-master']
+        
+    - name: tell master node's worker job to start at reboot
+      cron:
+        user: ubuntu
+        name: start-spark-worker
+        job: "{{ spark_usr_dir }}/sbin/start-slave.sh 1 spark://ubuntu-standard-{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address']|regex_replace('[^a-zA-Z0-9]', '-') }}:7077 --cores 2"
+        special_time: reboot
+      when: inventory_hostname in groups['cluster-pi-master']
+      
+    - name: tell worker nodes worker jobs to start at reboot
+      cron:
+        name: start-spark-worker
+        user: ubuntu
+        job: "{{ spark_usr_dir }}/sbin/start-slave.sh 1 spark://ubuntu-standard-{{ hostvars[item]['ansible_default_ipv4']['address']|regex_replace('[^a-zA-Z0-9]', '-') }}:7077"
+        special_time: reboot
       with_items: groups['cluster-pi-master']
       when: inventory_hostname in groups['cluster-pi-workers']
 ...
