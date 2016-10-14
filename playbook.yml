@@ -114,13 +114,6 @@
         spark_user_groups: [ubuntu]
         
   tasks:
-    - name: make spark log dir writable by standard user.
-      file: path="{{ spark_log_dir }}" state="directory" owner=ubuntu
-      become: true
-    - name: make spark run dir writable by standard user.
-      file: path="{{ spark_run_dir }}" state="directory" owner=ubuntu
-      become: true
-      
     - name: create the workers file on the master
       command: "cp -f {{ spark_conf_dir }}/conf/slaves.template {{ spark_conf_dir }}/conf/slaves"
       when: inventory_hostname in groups['cluster-pi-master']
