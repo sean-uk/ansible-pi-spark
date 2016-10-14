@@ -3,14 +3,19 @@
 - hosts: cluster-pis
   remote_user: ubuntu
   tasks:
-    - name: test connection
-      ping:
     - name: apt update
       apt: update_cache=yes
       become: true
     - name: install vim
       apt: name=vim
       become: true
+      
+- hosts: cluster-pis
+  remote_user: ubuntu
+  tasks:
+    - name: choose a unique hostname for each of the nodes
+      set_fact:
+        cluster_hostname: ubuntu-standard-{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address']|regex_replace('[^a-zA-Z0-9]', '-') }}
       
 - hosts: cluster-pis
   remote_user: ubuntu
@@ -46,18 +51,18 @@
       replace:
         dest: /etc/hostname
         regexp: "^.*$"
-        replace: "ubuntu-standard-{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address']|regex_replace('[^a-zA-Z0-9]', '-') }}"
+        replace: "{{ cluster_hostname }}"
       become: true
       
     - name: set hostname for session
-      command: "hostname ubuntu-standard-{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address']|regex_replace('[^a-zA-Z0-9]', '-') }}"
+      command: "hostname {{ cluster_hostname }}"
       become: true
       
     - name: ensure all nodes are in each other's hosts files
       lineinfile:
         dest: /etc/hosts
         state: present
-        line: "{{ hostvars[item]['ansible_default_ipv4']['address'] }} ubuntu-standard-{{ hostvars[item]['ansible_default_ipv4']['address']|regex_replace('[^a-zA-Z0-9]', '-') }}"
+        line: "{{ hostvars[item]['ansible_default_ipv4']['address'] }} {{ hostvars[item]['cluster_hostname'] }}"
       with_items: play_hosts
       become: true
       
@@ -144,13 +149,13 @@
       # starting worker with less resources on the master node.
       # todo: actually find the spark URL(s) rather than guessing from the hostname
     - name: start worker on master node
-      command: "{{ spark_usr_dir }}/sbin/start-slave.sh 1 spark://ubuntu-standard-{{ hostvars[item]['ansible_default_ipv4']['address']|regex_replace('[^a-zA-Z0-9]', '-') }}:7077 --cores 2"
+      command: "{{ spark_usr_dir }}/sbin/start-slave.sh 1 spark://{{ hostvars[item]['cluster_hostname'] }}:7077 --cores 2"
       with_items: groups['cluster-pi-master']
       when: inventory_hostname in groups['cluster-pi-master']
       
       ## todo: don't think this'll work right if there ever were more than one master!
     - name: start workers on worker nodes
-      command: "{{ spark_usr_dir }}/sbin/start-slave.sh 1 spark://ubuntu-standard-{{ hostvars[item]['ansible_default_ipv4']['address']|regex_replace('[^a-zA-Z0-9]', '-') }}:7077"
+      command: "{{ spark_usr_dir }}/sbin/start-slave.sh 1 spark://u{{ hostvars[item]['cluster_hostname'] }}:7077"
       with_items: groups['cluster-pi-master']
       when: inventory_hostname in groups['cluster-pi-workers']
         
@@ -166,7 +171,7 @@
       cron:
         user: ubuntu
         name: start-spark-worker
-        job: "{{ spark_usr_dir }}/sbin/start-slave.sh 1 spark://ubuntu-standard-{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address']|regex_replace('[^a-zA-Z0-9]', '-') }}:7077 --cores 2"
+        job: "{{ spark_usr_dir }}/sbin/start-slave.sh 1 spark://{{ hostvars[inventory_hostname]['cluster_hostname'] }}:7077 --cores 2"
         special_time: reboot
       when: inventory_hostname in groups['cluster-pi-master']
       
@@ -174,7 +179,7 @@
       cron:
         name: start-spark-worker
         user: ubuntu
-        job: "{{ spark_usr_dir }}/sbin/start-slave.sh 1 spark://ubuntu-standard-{{ hostvars[item]['ansible_default_ipv4']['address']|regex_replace('[^a-zA-Z0-9]', '-') }}:7077"
+        job: "{{ spark_usr_dir }}/sbin/start-slave.sh 1 spark://{{ hostvars[item]['cluster_hostname'] }}:7077"
         special_time: reboot
       with_items: groups['cluster-pi-master']
       when: inventory_hostname in groups['cluster-pi-workers']
