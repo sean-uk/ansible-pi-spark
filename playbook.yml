@@ -86,6 +86,69 @@
         state: present
         exclusive: false
 
+- hosts: cluster-pi-bulk-storage
+  remote_user: ubuntu
+  vars:
+    cluster_pi_bulk_storage_dir: /mnt/cluster_pi_bulk_storage
+  tasks:
+    - name: ensure bulk storage dir exists
+      file:
+        path: "{{ cluster_pi_bulk_storage_dir }}"
+        state: directory
+        owner: ubuntu
+        group: spark
+        mode: 0770
+      become: true
+  
+      # https://superuser.com/questions/361885/how-do-i-figure-out-which-dev-is-a-usb-flash-drive/361892#361892
+    - name: check for usb mass storage
+      shell: find /dev/disk/by-id/ | grep usb.*-part
+      register: usb_devices
+      
+    - name: get the first mass storage device name
+      set_fact:
+        cluster_bulk_storage: "{{ cluster_pi_bulk_storage_dir }}"
+      
+      # todo: learn the FS type.
+    - name: mount the usb mass storage on startup
+      mount:
+        name: "{{ cluster_pi_bulk_storage_dir }}"
+        src: "{{ usb_devices.stdout_lines | first }}"
+        state: mounted
+        fstype: ext4
+      become: true
+
+- hosts: cluster-pi-bulk-storage
+  remote_user: ubuntu
+  roles:
+    - role: geerlingguy.nfs
+      become: true
+  vars:
+    nfs_exports:
+      - "{{ hostvars[inventory_hostname]['cluster_bulk_storage'] }} *(rw,sync,no_root_squash)"
+      
+- hosts: cluster-pis
+  remote_user: ubuntu
+  tasks:
+    - name: create a folder for the host on the bulk storage
+      file:
+        path: "{{item}}/{{ cluster_hostname }}"
+        state: directory
+        owner: ubuntu
+        group: spark
+        mode: 0770
+      become: true
+      with_items: groups['cluster-pi-bulk-storage']
+      
+    #~ - name: tell the hosts to mount bulk storage on startup
+      #~ mount:
+        #~ name: "{{item}}/{{ cluster_hostname }}"
+        #~ src: "{{ usb_devices.stdout_lines | first }}"
+        #~ state: mounted
+        #~ fstype: ext4
+      #~ become: true
+      #~ with_items: groups['cluster-pi-bulk-storage']
+
 - hosts: cluster-pi-workers
   remote_user: ubuntu
   tasks:
@@ -104,7 +167,7 @@
 - hosts: cluster-pis
   remote_user: ubuntu
   
-  #~ # try to install spark
+  # try to install spark
   roles:
     - 
       role: azavea.spark
