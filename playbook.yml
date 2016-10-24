@@ -190,7 +190,8 @@
         ansible_architecture: armhf
         spark_user: spark
         spark_user_groups: [ubuntu]
-        
+        spark_log_dir: "/mnt/cluster_pi_bulk_storage_mount/spark/log"
+        spark_run_dir: "/mnt/cluster_pi_bulk_storage_mount/spark/run"
   tasks:
     - name: create the workers file on the master
       command: "cp -f {{ spark_conf_dir }}/conf/slaves.template {{ spark_conf_dir }}/conf/slaves"
