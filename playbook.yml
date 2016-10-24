@@ -86,7 +86,7 @@
         state: present
         exclusive: false
 
-- hosts: cluster-pi-bulk-storage
+- hosts: cluster-pi-bulk-storage    
   remote_user: ubuntu
   vars:
     cluster_pi_bulk_storage_dir: /mnt/cluster_pi_bulk_storage
@@ -105,18 +105,29 @@
       shell: find /dev/disk/by-id/ | grep usb.*-part
       register: usb_devices
       
-    - name: get the first mass storage device name
+    - name: learn the first mass storage device name
       set_fact:
         cluster_bulk_storage: "{{ cluster_pi_bulk_storage_dir }}"
+      when: usb_devices.stdout != ""
       
-      # todo: learn the FS type.
-    - name: mount the usb mass storage on startup
+      # todo: learn the real FS type.
+    - name: mount the usb mass storage now and on startup
       mount:
         name: "{{ cluster_pi_bulk_storage_dir }}"
         src: "{{ usb_devices.stdout_lines | first }}"
         state: mounted
         fstype: ext4
       become: true
+      
+    - name: create folders for each of the hosts in the bulk storage
+      file:
+        path: "{{ cluster_pi_bulk_storage_dir }}/{{ hostvars[item]['cluster_hostname'] }}"
+        state: directory
+        owner: ubuntu
+        group: spark
+        mode: 0770
+      become: true
+      with_items: groups['cluster-pis']
 
 - hosts: cluster-pi-bulk-storage
   remote_user: ubuntu
@@ -129,25 +140,24 @@
       
 - hosts: cluster-pis
   remote_user: ubuntu
+  vars:
+    cluster_pi_bulk_storage_mount: /mnt/cluster_pi_bulk_storage_mount
   tasks:
-    - name: create a folder for the host on the bulk storage
-      file:
-        path: "{{item}}/{{ cluster_hostname }}"
-        state: directory
-        owner: ubuntu
-        group: spark
-        mode: 0770
+    - name: ensure nfs utils are installed
+      apt: name=nfs-common
       become: true
-      with_items: groups['cluster-pi-bulk-storage']
-      
-    #~ - name: tell the hosts to mount bulk storage on startup
-      #~ mount:
-        #~ name: "{{item}}/{{ cluster_hostname }}"
-        #~ src: "{{ usb_devices.stdout_lines | first }}"
-        #~ state: mounted
-        #~ fstype: ext4
-      #~ become: true
-      #~ with_items: groups['cluster-pi-bulk-storage']
+  
+    - name: learn the first bulk storage host
+      set_fact:
+        cluster_bulk_storage_host: "{{ groups['cluster-pi-bulk-storage'] | first }}"
+        
+    - name: tell all hosts to nfs mount bulk storage on startup
+      mount:
+        name: "{{ cluster_pi_bulk_storage_mount }}"
+        src: "{{ hostvars[cluster_bulk_storage_host]['cluster_hostname'] }}:{{ hostvars[cluster_bulk_storage_host]['cluster_bulk_storage'] }}/{{ cluster_hostname }}"
+        state: mounted
+        fstype: nfs
+      become: true
 
 - hosts: cluster-pi-workers
   remote_user: ubuntu
