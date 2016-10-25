@@ -90,13 +90,17 @@
   remote_user: ubuntu
   vars:
     cluster_pi_bulk_storage_dir: /mnt/cluster_pi_bulk_storage
+    spark_group: spark
   tasks:
+    - name: ensure spark group exists
+      group: name="{{ spark_group }}"
+      become: true
     - name: ensure bulk storage dir exists
       file:
         path: "{{ cluster_pi_bulk_storage_dir }}"
         state: directory
         owner: ubuntu
-        group: spark
+        group: "{{ spark_group }}"
         mode: 0770
       become: true
   
@@ -109,6 +113,12 @@
       set_fact:
         cluster_bulk_storage: "{{ cluster_pi_bulk_storage_dir }}"
       when: usb_devices.stdout != ""
+      
+    - name: debug stuff
+      debug: msg="{{ cluster_pi_bulk_storage_dir }}"
+      
+    - name: debug more stuff
+      debug: msg="{{ usb_devices.stdout_lines | first }}"
       
       # todo: learn the real FS type.
     - name: mount the usb mass storage now and on startup
@@ -124,7 +134,7 @@
         path: "{{ cluster_pi_bulk_storage_dir }}/{{ hostvars[item]['cluster_hostname'] }}"
         state: directory
         owner: ubuntu
-        group: spark
+        group: "{{ spark_group }}"
         mode: 0770
       become: true
       with_items: groups['cluster-pis']
@@ -142,6 +152,7 @@
   remote_user: ubuntu
   vars:
     cluster_pi_bulk_storage_mount: /mnt/cluster_pi_bulk_storage_mount
+    spark_group: spark
   tasks:
     - name: ensure nfs utils are installed
       apt: name=nfs-common
@@ -157,6 +168,14 @@
         src: "{{ hostvars[cluster_bulk_storage_host]['cluster_hostname'] }}:{{ hostvars[cluster_bulk_storage_host]['cluster_bulk_storage'] }}/{{ cluster_hostname }}"
         state: mounted
         fstype: nfs
+      become: true
+      
+    - name: change ownership on nfs spark mount
+      file:
+        path: "{{ cluster_pi_bulk_storage_mount }}"
+        owner: ubuntu
+        group: "{{ spark_group }}"
+        recurse: true
       become: true
 
 - hosts: cluster-pi-workers
